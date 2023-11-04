@@ -6,7 +6,7 @@ Version: 1.0
 Author: Rohan Poudel
 */
 
-function custom_rest_trip_route()
+function custom_rest_trip_list_route()
 {
   register_rest_route(
     'ntt/v1',
@@ -17,7 +17,7 @@ function custom_rest_trip_route()
     )
   );
 }
-add_action('rest_api_init', 'custom_rest_trip_route');
+add_action('rest_api_init', 'custom_rest_trip_list_route');
 
 function get_filtered_trips($request)
 {
@@ -134,4 +134,135 @@ function get_filtered_trips($request)
   }
 
   return $result;
+}
+
+
+function custom_rest_trip_route()
+{
+  register_rest_route(
+    'ntt/v1',
+    'trip',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_trip',
+    )
+  );
+}
+add_action('rest_api_init', 'custom_rest_trip_route');
+
+function get_trip($request)
+{
+  $trip_data = $request->get_header('X-Trip-data');
+  $data = json_decode($trip_data, true);
+  $trip_slug = $data['trip'];
+  $country_param = $data['country'];
+  $activity_param = $data['activity'];
+  $region_param = $data['region'];
+
+  if (empty($trip_data)) {
+    return array();
+  }
+
+  $args = array(
+    'name' => $trip_slug,
+    'post_type' => 'trip',
+    'post_status' => 'publish',
+    'posts_per_page' => 1,
+  );
+
+  $posts = get_posts($args);
+
+  if (empty($posts)) {
+    return array();
+  }
+
+  $post = $posts[0];
+  $acf_fields = get_fields($post->ID);
+
+  if (isset($acf_fields['gallery']) && is_array($acf_fields['gallery'])) {
+    $modified_gallery = array();
+
+    foreach ($acf_fields['gallery'] as $image) {
+      $thumbnail_url = wp_get_attachment_image_src($image['ID'], 'thumbnail');
+      $medium_url = wp_get_attachment_image_src($image['ID'], 'medium');
+      $large_url = wp_get_attachment_image_src($image['ID'], 'large');
+      $image_sizes = array(
+        'thumbnail' => array('url' => $thumbnail_url[0]),
+        'medium' => array('url' => $medium_url[0]),
+        'large' => array('url' => $large_url[0]),
+      );
+      $alt_text = get_post_meta($image['ID'], '_wp_attachment_image_alt', true);
+
+      $image_data = array(
+        'sizes' => $image_sizes,
+        'alt' => $alt_text,
+      );
+
+      $modified_gallery[] = $image_data;
+    }
+
+    $acf_fields['gallery'] = $modified_gallery;
+  }
+
+  // Get the featured media (if set)
+  $featured_media_id = get_post_thumbnail_id($post->ID);
+  $featured_media_sizes = wp_get_attachment_image_sizes($featured_media_id);
+  $featured_media_alt = get_post_meta($featured_media_id, '_wp_attachment_image_alt', true);
+
+  $featured_media = array(
+    'alt' => $featured_media_alt,
+    'sizes' => array(
+      'thumbnail' => array('url' => wp_get_attachment_image_url($featured_media_id, 'thumbnail')),
+      'medium' => array('url' => wp_get_attachment_image_url($featured_media_id, 'medium')),
+      'large' => array('url' => wp_get_attachment_image_url($featured_media_id, 'large')),
+      'full' => array('url' => wp_get_attachment_image_url($featured_media_id, 'full')),
+    ),
+  );
+
+  $taxonomy_terms = wp_get_post_terms($post->ID, array('country', 'activities', 'destination', 'difficulty'));
+
+  $country_terms = array();
+  $activity_terms = array();
+  $destination_terms = array();
+  $difficulty_terms = array();
+
+  foreach ($taxonomy_terms as $term) {
+    if ($term->taxonomy === 'country') {
+      $country_terms[] = $term->name;
+    } elseif ($term->taxonomy === 'difficulty') {
+      $difficulty_terms[] = $term->name;
+    } elseif ($term->parent !== 0) {
+      switch ($term->taxonomy) {
+        case 'activities':
+          $activity_terms[] = $term->name;
+          break;
+        case 'destination':
+          $destination_terms[] = $term->name;
+          break;
+      }
+    }
+  }
+
+  $trip_data = array(
+    'post' => $post,
+    'acf' => $acf_fields,
+    'country' => $country_terms,
+    'activities' => $activity_terms,
+    'destination' => $destination_terms,
+    'difficulty' => $difficulty_terms,
+    'featured_media' => $featured_media
+  );
+
+  $country_param = strtolower($country_param);
+  $activity_param = strtolower($activity_param);
+  $region_param = strtolower($region_param);
+  $destination_terms = array_map('strtolower', $destination_terms);
+  $country_terms = array_map('strtolower', $country_terms);
+  $activity_terms = array_map('strtolower', $activity_terms);
+
+  if (in_array($country_param, $country_terms) && in_array($activity_param, $activity_terms) && in_array($region_param, $destination_terms)) {
+    return $trip_data;
+  } else {
+    return array();
+  }
 }
