@@ -266,3 +266,79 @@ function get_trip($request)
     return array();
   }
 }
+
+function custom_rest_activity_region_route()
+{
+  register_rest_route(
+    'ntt/v1',
+    'activity_region',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_activity_region',
+    )
+  );
+}
+add_action('rest_api_init', 'custom_rest_activity_region_route');
+
+function get_activity_region($request)
+{
+  $trip_data = $request->get_header('X-region-data');
+  $data = json_decode($trip_data, true);
+  $country_param = $data['country'];
+  $activity_param = $data['activity'];
+
+  if (empty($trip_data)) {
+    return array();
+  }
+
+  $args = array(
+    'post_type' => 'trip',
+    'tax_query' => array(
+      'relation' => 'AND',
+      array(
+        'taxonomy' => 'country',
+        'field' => 'slug',
+        'terms' => $country_param,
+      ),
+      array(
+        'taxonomy' => 'activities',
+        'field' => 'slug',
+        'terms' => $activity_param,
+      ),
+    ),
+  );
+
+  $trips = get_posts($args);
+
+  if (empty($trips)) {
+    return array();
+  }
+
+  $trip_destinations = array();
+  $filtered_destinations = array();
+  $filtered_activities = array();
+  foreach ($trips as $trip) {
+    $destination_terms = wp_get_post_terms($trip->ID, 'destination');
+    $activities_terms = wp_get_post_terms($trip->ID, 'activities');
+    foreach ($destination_terms as $term) {
+      $fields = get_fields($term);
+      $term->acf = $fields;
+      if ($term->parent !== 0) {
+        $filtered_destinations[] = $term;
+      }
+    }
+    foreach ($activities_terms as $term) {
+      $fields = get_fields($term);
+      $term->acf = $fields;
+      if ($term->parent !== 0) {
+        $filtered_activities = $term;
+        break;
+      }
+    }
+    $trip_destinations = $filtered_destinations;
+    array_push($trip_destinations, $filtered_activities);
+  }
+
+
+  return $trip_destinations;
+}
