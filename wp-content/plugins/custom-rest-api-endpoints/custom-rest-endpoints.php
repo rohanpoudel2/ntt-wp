@@ -80,6 +80,14 @@ function get_filtered_trips($request)
       return $term->parent !== 0;
     }), 'name');
 
+    $destination_taxonomy_details = array_filter($destination_terms, function ($term) {
+      return $term->parent !== 0;
+    });
+
+    $destination_taxonomy_description = $destination_taxonomy_details[0]->description;
+    $destination_taxonomy_acf = get_field('hero', 'destination_' . $destination_taxonomy_details[0]->term_id);
+    $destination_taxonomy_media_id = $destination_taxonomy_acf['image']['id'];
+
     $activity_names = wp_list_pluck(array_filter($activity_terms, function ($term) {
       return $term->parent !== 0;
     }), 'name');
@@ -93,6 +101,14 @@ function get_filtered_trips($request)
       $image_data = wp_get_attachment_image_src($featured_media_id, $size);
       if ($image_data) {
         $featured_media_sizes[$size] = $image_data[0];
+      }
+    }
+
+    $destination_taxonomy_image_sizes = array();
+    foreach ($image_sizes as $size) {
+      $image_data = wp_get_attachment_image_src($destination_taxonomy_media_id, $size);
+      if ($image_data) {
+        $destination_taxonomy_image_sizes[$size] = $image_data[0];
       }
     }
 
@@ -123,7 +139,6 @@ function get_filtered_trips($request)
       $item['content'] = array(
         'rendered' => apply_filters('the_content', $post->post_content),
       );
-      $item['featured_media'] = $featured_media_sizes;
       $item['activities'] = $formatted_activities;
       $item['destination'] = $destination_names;
       $item['difficulty'] = $difficulty_name;
@@ -133,7 +148,13 @@ function get_filtered_trips($request)
     }
   }
 
-  return $result;
+  $taxonomy_array = array(
+    'description' => $destination_taxonomy_description,
+    'image' => $destination_taxonomy_image_sizes,
+    'tours' => $result
+  );
+
+  return $taxonomy_array;
 }
 
 
@@ -204,7 +225,6 @@ function get_trip($request)
     $acf_fields['gallery'] = $modified_gallery;
   }
 
-  // Get the featured media (if set)
   $featured_media_id = get_post_thumbnail_id($post->ID);
   $featured_media_sizes = wp_get_attachment_image_sizes($featured_media_id);
   $featured_media_alt = get_post_meta($featured_media_id, '_wp_attachment_image_alt', true);
@@ -341,4 +361,132 @@ function get_activity_region($request)
 
 
   return $trip_destinations;
+}
+
+function country_information()
+{
+  register_rest_route(
+    'ntt/v1',
+    'country',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_country_information',
+    )
+  );
+}
+add_action('rest_api_init', 'country_information');
+
+function get_country_information($request)
+{
+  $country_data = $request->get_header('X-country-data');
+  $data = json_decode($country_data, true);
+  $country_param = $data['country'];
+  if (empty($country_data)) {
+    return array();
+  }
+  $args = array(
+    'post_type' => 'country-information',
+    'name' => $country_param,
+  );
+  $country_information = get_posts($args);
+  if (empty($country_information)) {
+    return array();
+  }
+  $country_acf = get_fields($country_information[0]->ID);
+  $top_rated_array = array();
+  $processed_posts = array();
+
+  $top_rated = $country_acf['top_rated_treks'];
+  $best_activity = $country_acf['best_activity_region'];
+
+  foreach ($top_rated as $post) {
+    if (in_array($post->ID, $processed_posts)) {
+      continue;
+    }
+
+    $processed_posts[] = $post->ID;
+    $country_terms = get_terms(array('taxonomy' => 'country', 'object_ids' => $post->ID, 'fields' => 'slugs', 'exclude' => array(0)));
+    $activities_terms = get_terms(array('taxonomy' => 'activities', 'object_ids' => $post->ID, 'fields' => 'slugs', 'exclude' => array(0)));
+    $destination_terms = get_terms(array('taxonomy' => 'destination', 'object_ids' => $post->ID, 'fields' => 'slugs', 'exclude' => array(0)));
+
+    $country_terms_filtered = array();
+    $activity_terms_filtered = array();
+    $destination_terms_filtered = array();
+
+    foreach ($country_terms as $term_slug) {
+      $term = get_term_by('slug', $term_slug, 'country');
+      if ($term->parent === 0) {
+        $country_terms_filtered[] = $term_slug;
+      }
+    }
+
+    foreach ($activities_terms as $term_slug) {
+      $term = get_term_by('slug', $term_slug, 'activities');
+      if ($term->parent !== 0) {
+        $activity_terms_filtered[] = $term_slug;
+      }
+    }
+
+    foreach ($destination_terms as $term_slug) {
+      $term = get_term_by('slug', $term_slug, 'destination');
+      if ($term->parent !== 0) {
+        $destination_terms_filtered[] = $term_slug;
+      }
+    }
+
+    $post_data = array(
+      'id' => $post->ID,
+      'date' => $post->post_date,
+      'date_gmt' => $post->post_date_gmt,
+      'guid' => $post->guid,
+      'modified' => $post->post_modified,
+      'modified_gmt' => $post->post_modified_gmt,
+      'slug' => $post->post_name,
+      'status' => $post->post_status,
+      'title' => array(
+        'rendered' => $post->post_title,
+      ),
+      'featured_image' => get_the_post_thumbnail_url($post->ID),
+      'country' => $country_terms_filtered,
+      'activities' => $activity_terms_filtered,
+      'destination' => $destination_terms_filtered,
+    );
+
+    $top_rated_array[] = $post_data;
+  }
+  $new = array();
+  foreach ($best_activity as $term) {
+    $region_posts = get_posts(
+      array(
+        'post_type' => 'trip',
+        'tax_query' => array(
+          array(
+            'taxonomy' => 'destination',
+            'field' => 'slug',
+            'terms' => $term,
+          ),
+        ),
+      )
+    );
+    foreach ($region_posts as $post) {
+      $activities_terms = get_terms(array('taxonomy' => 'activities', 'object_ids' => $post->ID, 'fields' => 'slugs', 'exclude' => array(0)));
+      $activity_terms_filtered = array();
+      foreach ($activities_terms as $term_slug) {
+        $term = get_term_by('slug', $term_slug, 'activities');
+        if ($term && $term->parent !== 0 && $term->parent !== null) {
+          $activity_terms_filtered[] = $term_slug;
+        }
+      }
+      $region_activities = $activity_terms_filtered;
+    }
+    $term->activities = $region_activities;
+    array_push($new, [$region_activities, get_fields($term)]);
+  }
+
+  $country_information['acf'] = $country_acf;
+  $country_information['acf']['top_rated_treks'] = $top_rated_array;
+  $country_information['acf']['best_activity_region'] = $best_activity;
+  $country_information['acf']['map_activities'] = $new;
+
+  return $country_information;
 }
