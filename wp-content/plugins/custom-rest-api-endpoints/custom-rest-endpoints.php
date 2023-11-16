@@ -490,3 +490,83 @@ function get_country_information($request)
 
   return $country_information;
 }
+
+function hearted_trip()
+{
+  register_rest_route(
+    'ntt/v1',
+    'hearted',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_hearted_trips',
+    )
+  );
+}
+add_action('rest_api_init', 'hearted_trip');
+
+function get_hearted_trips($request)
+{
+  $country_data = $request->get_header('X-heart-data');
+  $data = json_decode($country_data, true);
+  $ids = $data['ids'];
+
+  $responses = array();
+
+  foreach ($ids as $id) {
+    $post = get_post($id);
+
+    if (empty($post)) {
+      continue;
+    }
+
+    $featured_image_url = get_the_post_thumbnail_url($post->ID, 'medium_large');
+    $post_content = apply_filters('the_content', $post->post_content);
+    $post_excerpt = $post->post_excerpt;
+
+    $country_terms = wp_get_post_terms($post->ID, 'country', array('fields' => 'slugs'));
+    $activities_terms = wp_get_post_terms($post->ID, 'activities', array('fields' => 'slugs'));
+    $destination_terms = wp_get_post_terms($post->ID, 'destination', array('fields' => 'slugs'));
+
+    $country_terms_filtered = array();
+    $activity_terms_filtered = array();
+    $destination_terms_filtered = array();
+
+    foreach ($country_terms as $term_slug) {
+      $term = get_term_by('slug', $term_slug, 'country');
+      if ($term->parent === 0) {
+        $country_terms_filtered[] = $term_slug;
+      }
+    }
+
+    foreach ($activities_terms as $term_slug) {
+      $term = get_term_by('slug', $term_slug, 'activities');
+      if ($term->parent !== 0) {
+        $activity_terms_filtered[] = $term_slug;
+      }
+    }
+
+    foreach ($destination_terms as $term_slug) {
+      $term = get_term_by('slug', $term_slug, 'destination');
+      if ($term->parent !== 0) {
+        $destination_terms_filtered[] = $term_slug;
+      }
+    }
+
+    $responses[] = array(
+      'ID' => $post->ID,
+      'post_title' => $post->post_title,
+      'post_excerpt' => $post_excerpt,
+      'post_status' => $post->post_status,
+      'post_name' => $post->post_name,
+      'post_type' => $post->post_type,
+      'featured_image_url' => $featured_image_url,
+      'post_content' => $post_content,
+      'country' => $country_terms_filtered,
+      'activities' => $activity_terms_filtered,
+      'destination' => $destination_terms_filtered,
+    );
+  }
+
+  return $responses;
+}
+
