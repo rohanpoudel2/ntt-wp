@@ -527,35 +527,38 @@ function get_hearted_trips($request)
     $activities_terms = wp_get_post_terms($post->ID, 'activities', array('fields' => 'slugs'));
     $destination_terms = wp_get_post_terms($post->ID, 'destination', array('fields' => 'slugs'));
 
-    $country_terms_filtered = array();
-    $activity_terms_filtered = array();
-    $destination_terms_filtered = array();
+    $country_terms_filtered;
+    $activity_terms_filtered;
+    $destination_terms_filtered;
 
     foreach ($country_terms as $term_slug) {
       $term = get_term_by('slug', $term_slug, 'country');
       if ($term->parent === 0) {
-        $country_terms_filtered[] = $term_slug;
+        $country_terms_filtered = $term_slug;
       }
     }
 
     foreach ($activities_terms as $term_slug) {
       $term = get_term_by('slug', $term_slug, 'activities');
       if ($term->parent !== 0) {
-        $activity_terms_filtered[] = $term_slug;
+        $activity_terms_filtered = $term_slug;
       }
     }
 
     foreach ($destination_terms as $term_slug) {
       $term = get_term_by('slug', $term_slug, 'destination');
       if ($term->parent !== 0) {
-        $destination_terms_filtered[] = $term_slug;
+        $destination_terms_filtered = $term_slug;
       }
     }
+
+    $acf = get_fields($post->ID);
+    $price = $acf['prices']['price'];
+    $rating = $acf['avg_rating'];
 
     $responses[] = array(
       'ID' => $post->ID,
       'post_title' => $post->post_title,
-      'post_excerpt' => $post_excerpt,
       'post_status' => $post->post_status,
       'post_name' => $post->post_name,
       'post_type' => $post->post_type,
@@ -564,6 +567,8 @@ function get_hearted_trips($request)
       'country' => $country_terms_filtered,
       'activities' => $activity_terms_filtered,
       'destination' => $destination_terms_filtered,
+      'price' => $price,
+      'rating' => $rating,
     );
   }
 
