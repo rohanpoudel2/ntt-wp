@@ -198,6 +198,7 @@ function get_trip($request)
   }
 
   $post = $posts[0];
+  $post->post_content = apply_filters('the_content', $post->post_content);
   $acf_fields = get_fields($post->ID);
 
   if (isset($acf_fields['gallery']) && is_array($acf_fields['gallery'])) {
