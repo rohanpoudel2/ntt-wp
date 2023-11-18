@@ -201,6 +201,10 @@ function get_trip($request)
   $post->post_content = apply_filters('the_content', $post->post_content);
   $acf_fields = get_fields($post->ID);
 
+  $recommendation = basic_trip_fetch($acf_fields['recommendation']->ID);
+
+  $acf_fields['recommendation'] = $recommendation;
+
   if (isset($acf_fields['gallery']) && is_array($acf_fields['gallery'])) {
     $modified_gallery = array();
 
@@ -514,65 +518,70 @@ function get_hearted_trips($request)
   $responses = array();
 
   foreach ($ids as $id) {
-    $post = get_post($id);
-
-    if (empty($post)) {
-      continue;
-    }
-
-    $featured_image_url = get_the_post_thumbnail_url($post->ID, 'medium_large');
-    $post_content = apply_filters('the_content', $post->post_content);
-    $post_excerpt = $post->post_excerpt;
-
-    $country_terms = wp_get_post_terms($post->ID, 'country', array('fields' => 'slugs'));
-    $activities_terms = wp_get_post_terms($post->ID, 'activities', array('fields' => 'slugs'));
-    $destination_terms = wp_get_post_terms($post->ID, 'destination', array('fields' => 'slugs'));
-
-    $country_terms_filtered;
-    $activity_terms_filtered;
-    $destination_terms_filtered;
-
-    foreach ($country_terms as $term_slug) {
-      $term = get_term_by('slug', $term_slug, 'country');
-      if ($term->parent === 0) {
-        $country_terms_filtered = $term_slug;
-      }
-    }
-
-    foreach ($activities_terms as $term_slug) {
-      $term = get_term_by('slug', $term_slug, 'activities');
-      if ($term->parent !== 0) {
-        $activity_terms_filtered = $term_slug;
-      }
-    }
-
-    foreach ($destination_terms as $term_slug) {
-      $term = get_term_by('slug', $term_slug, 'destination');
-      if ($term->parent !== 0) {
-        $destination_terms_filtered = $term_slug;
-      }
-    }
-
-    $acf = get_fields($post->ID);
-    $price = $acf['prices']['price'];
-    $rating = $acf['avg_rating'];
-
-    $responses[] = array(
-      'ID' => $post->ID,
-      'post_title' => $post->post_title,
-      'post_status' => $post->post_status,
-      'post_name' => $post->post_name,
-      'post_type' => $post->post_type,
-      'featured_image_url' => $featured_image_url,
-      'post_content' => $post_content,
-      'country' => $country_terms_filtered,
-      'activities' => $activity_terms_filtered,
-      'destination' => $destination_terms_filtered,
-      'price' => $price,
-      'rating' => $rating,
-    );
+    $response = basic_trip_fetch($id);
+    $responses[] = $response;
   }
 
   return $responses;
 }
 
+function basic_trip_fetch($id)
+{
+  $post = get_post($id);
+
+  if (empty($post)) {
+    return array();
+  }
+
+  $featured_image_url = get_the_post_thumbnail_url($post->ID, 'medium_large');
+  $post_content = apply_filters('the_content', $post->post_content);
+
+  $country_terms = wp_get_post_terms($post->ID, 'country', array('fields' => 'slugs'));
+  $activities_terms = wp_get_post_terms($post->ID, 'activities', array('fields' => 'slugs'));
+  $destination_terms = wp_get_post_terms($post->ID, 'destination', array('fields' => 'slugs'));
+
+  $country_terms_filtered = '';
+  $activity_terms_filtered = '';
+  $destination_terms_filtered = '';
+
+  foreach ($country_terms as $term_slug) {
+    $term = get_term_by('slug', $term_slug, 'country');
+    if ($term->parent === 0) {
+      $country_terms_filtered = $term_slug;
+    }
+  }
+
+  foreach ($activities_terms as $term_slug) {
+    $term = get_term_by('slug', $term_slug, 'activities');
+    if ($term->parent !== 0) {
+      $activity_terms_filtered = $term_slug;
+    }
+  }
+
+  foreach ($destination_terms as $term_slug) {
+    $term = get_term_by('slug', $term_slug, 'destination');
+    if ($term->parent !== 0) {
+      $destination_terms_filtered = $term_slug;
+    }
+  }
+
+  $acf = get_fields($post->ID);
+  $price = $acf['prices']['price'];
+  $rating = $acf['avg_rating'];
+
+  $responses = array(
+    'ID' => $post->ID,
+    'post_title' => $post->post_title,
+    'post_status' => $post->post_status,
+    'post_name' => $post->post_name,
+    'post_type' => $post->post_type,
+    'featured_image_url' => $featured_image_url,
+    'post_content' => $post_content,
+    'country' => $country_terms_filtered,
+    'activities' => $activity_terms_filtered,
+    'destination' => $destination_terms_filtered,
+    'price' => $price,
+    'rating' => $rating,
+  );
+  return $responses;
+}
