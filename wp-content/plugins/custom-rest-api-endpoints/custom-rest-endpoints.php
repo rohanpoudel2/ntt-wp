@@ -585,3 +585,48 @@ function basic_trip_fetch($id)
   );
   return $responses;
 }
+
+function home_page()
+{
+  register_rest_route(
+    'ntt/v1',
+    'home',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_home_page',
+    )
+  );
+}
+add_action('rest_api_init', 'home_page');
+
+function get_home_page($request)
+{
+  $home_page = get_page_by_path('home');
+
+  if (!$home_page) {
+    return new WP_Error('not_found', 'Home page not found', array('status' => 404));
+  }
+
+  $acf = get_fields($home_page->ID);
+  foreach ($acf["home_hero"] as $key => $image) {
+    $acf["home_hero"][$key]["hero_image"] = wp_get_attachment_image_src($image["hero_image"]["ID"], 'full')[0];
+  }
+  foreach ($acf["countries"] as $countryKey => $country) {
+    $trips = $country["country_items"]["activity"]["activity"];
+    foreach ($trips as $tripKey => $trip) {
+      $trips[$tripKey] = basic_trip_fetch($trip->ID);
+    }
+    $acf["countries"][$countryKey]["country_items"]["activity"]["activity"] = $trips;
+  }
+  $a = "";
+  foreach ($acf["latest_updates"]["latest_updates"] as $key => $update) {
+    $formatted_content = apply_filters('the_content', $update["latest_update"]->post_content);
+    $acf["latest_updates"]["latest_updates"][$key]["latest_update"]->post_content = $formatted_content;
+  }
+
+  $response = array(
+    "data" => $acf,
+  );
+
+  return $response;
+}
