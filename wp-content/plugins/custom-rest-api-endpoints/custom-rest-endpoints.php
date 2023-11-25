@@ -630,3 +630,34 @@ function get_home_page($request)
 
   return $response;
 }
+
+function get_gallery()
+{
+  register_rest_route(
+    'ntt/v1',
+    'gallery',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_trip_gallery',
+    )
+  );
+}
+add_action('rest_api_init', 'get_gallery');
+
+function get_trip_gallery($request)
+{
+  $trip_id = $request->get_param('id');
+  if (empty($trip_id)) {
+    return array();
+  }
+  $trip = get_post($trip_id);
+  if (empty($trip)) {
+    return array();
+  }
+  $gallery = get_fields($trip)['gallery'];
+  $response = array(
+    "title" => $trip->post_title,
+    "data" => $gallery,
+  );
+  return $response;
+}
