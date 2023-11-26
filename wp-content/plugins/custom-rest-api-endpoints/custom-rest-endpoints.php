@@ -615,11 +615,16 @@ function get_home_page($request)
   foreach ($acf["countries"] as $countryKey => $country) {
     $trips = $country["country_items"]["activity"]["activity"];
     foreach ($trips as $tripKey => $trip) {
-      $trips[$tripKey] = basic_trip_fetch($trip->ID);
+      $temp = get_taxonomy_details($trip, 'activities');
+      if ($temp['parent'] !== 0) {
+        $trips[$tripKey] = get_taxonomy_details($trip, 'activities');
+      } else {
+        unset($trips[$tripKey]);
+      }
     }
     $acf["countries"][$countryKey]["country_items"]["activity"]["activity"] = $trips;
   }
-  $a = "";
+
   foreach ($acf["latest_updates"]["latest_updates"] as $key => $update) {
     $formatted_content = apply_filters('the_content', $update["latest_update"]->post_content);
     $acf["latest_updates"]["latest_updates"][$key]["latest_update"]->post_content = $formatted_content;
@@ -660,5 +665,22 @@ function get_trip_gallery($request)
     "title" => $trip->post_title,
     "data" => $gallery,
   );
+  return $response;
+}
+
+function get_taxonomy_details($id, $taxonomy)
+{
+  $term = get_term($id, $taxonomy);
+  $acf = get_fields($term);
+  $response = array(
+    'term_id' => $term->term_id,
+    'parent' => $term->parent,
+    'term_name' => $acf['hero']['title'],
+    'term_slug' => $term->slug,
+    'term_description' => $term->description,
+    'image' => $acf['hero']['image']['sizes']['medium_large'],
+    'count' => $term->count,
+  );
+
   return $response;
 }
