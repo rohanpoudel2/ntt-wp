@@ -126,6 +126,7 @@ function get_filtered_trips($request)
     );
 
     if (isset($list_param) && filter_var($list_param, FILTER_VALIDATE_BOOLEAN)) {
+      $item['prices'] = $acf_fields['prices'];
       $result[] = $item;
     } else {
       $item['date_gmt'] = $post->post_date_gmt;
