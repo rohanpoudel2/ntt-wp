@@ -232,7 +232,6 @@ function get_trip($request)
   }
 
   $featured_media_id = get_post_thumbnail_id($post->ID);
-  $featured_media_sizes = wp_get_attachment_image_sizes($featured_media_id);
   $featured_media_alt = get_post_meta($featured_media_id, '_wp_attachment_image_alt', true);
 
   $featured_media = array(
@@ -540,6 +539,7 @@ function basic_trip_fetch($id)
   $country_terms = wp_get_post_terms($post->ID, 'country', array('fields' => 'slugs'));
   $activities_terms = wp_get_post_terms($post->ID, 'activities', array('fields' => 'slugs'));
   $destination_terms = wp_get_post_terms($post->ID, 'destination', array('fields' => 'slugs'));
+  $difficulty_term = wp_get_post_terms($post->ID, 'difficulty', array('fields' => 'slugs'));
 
   $country_terms_filtered = '';
   $activity_terms_filtered = '';
@@ -568,7 +568,9 @@ function basic_trip_fetch($id)
 
   $acf = get_fields($post->ID);
   $price = $acf['prices']['price'];
+  $sale_price = $acf['prices']['sale_price'];
   $rating = $acf['avg_rating'];
+  $duration = $acf['duration'];
 
   $responses = array(
     'ID' => $post->ID,
@@ -581,7 +583,10 @@ function basic_trip_fetch($id)
     'country' => $country_terms_filtered,
     'activities' => $activity_terms_filtered,
     'destination' => $destination_terms_filtered,
+    'difficulty' => $difficulty_term[0],
+    'duration' => $duration,
     'price' => $price,
+    'sale_price' => $sale_price,
     'rating' => $rating,
   );
   return $responses;
@@ -623,6 +628,13 @@ function get_home_page($request)
       }
     }
     $acf["countries"][$countryKey]["country_items"]["activity"]["activity"] = $trips;
+  }
+  foreach ($acf["countries"] as $key => $country) {
+    $trips = $country["country_items"]["group_tour"]["group_tour"];
+    foreach ($trips as $tripKey => $trip) {
+      $trips[$tripKey] = basic_trip_fetch($trip);
+    }
+    $acf["countries"][$key]["country_items"]["group_tour"]["group_tour"] = $trips;
   }
 
   foreach ($acf["latest_updates"]["latest_updates"] as $key => $update) {
@@ -683,4 +695,107 @@ function get_taxonomy_details($id, $taxonomy)
   );
 
   return $response;
+}
+
+function cross_country()
+{
+  register_rest_route(
+    'ntt/v1',
+    'cross-country',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_cross_country',
+    )
+  );
+}
+add_action('rest_api_init', 'cross_country');
+
+function get_cross_country($request)
+{
+  $cross = get_page_by_path('cross-country');
+
+  if (!$cross) {
+    return new WP_Error('not_found', 'Cross country page not found', array('status' => 404));
+  }
+
+  $acf = get_fields($cross->ID);
+  $featured_image_url = get_the_post_thumbnail_url($cross->ID, 'full');
+
+  $args = array(
+    'post_type' => 'trip',
+    'tax_query' => array(
+      array(
+        'taxonomy' => 'activities',
+        'field' => 'slug',
+        'terms' => 'cross-country',
+      ),
+    ),
+  );
+
+  $trips = get_posts($args);
+
+  if ($trips) {
+    $formatted_trips = array();
+    foreach ($trips as $trip) {
+      $trip_data = basic_trip_fetch($trip->ID);
+      $formatted_trips[] = $trip_data;
+    }
+  }
+
+  return array(
+    'image' => $featured_image_url,
+    'data' => $cross,
+    'acf' => $acf,
+    'trips' => $formatted_trips,
+  );
+}
+
+function cross_country_trip()
+{
+  register_rest_route(
+    'ntt/v1',
+    'cross-country-trip',
+    array(
+      'methods' => 'GET',
+      'callback' => 'get_cross_country_trip',
+    )
+  );
+}
+add_action('rest_api_init', 'cross_country_trip');
+
+function get_cross_country_trip($request)
+{
+  $slug = $request->get_param('slug');
+  $args = array(
+    'name' => $slug,
+    'post_type' => 'trip',
+    'post_status' => 'publish',
+    'posts_per_page' => 1,
+  );
+  $trip = get_posts($args);
+
+  if (!$trip) {
+    return array();
+  }
+
+  $trip_id = $trip[0]->ID;
+
+  $destinations = wp_get_post_terms($trip_id, 'destination', array('fields' => 'names'));
+  $activities = wp_get_post_terms($trip_id, 'activities', array('fields' => 'names'));
+  $countries = wp_get_post_terms($trip_id, 'country', array('fields' => 'names'));
+  $difficulty = wp_get_post_terms($trip_id, 'difficulty', array('fields' => 'names'));
+  $featured_image_url = get_the_post_thumbnail_url($trip_id, 'full');
+
+  $acf = get_fields($trip_id);
+  $acf['recommendation'] = basic_trip_fetch($acf['recommendation']->ID);
+
+  return array(
+    'trip' => $trip,
+    'destinations' => $destinations,
+    'activities' => $activities,
+    'countries' => $countries,
+    'difficulty' => $difficulty,
+    'acf' => $acf,
+    'featured_media' => $featured_image_url,
+  );
 }
